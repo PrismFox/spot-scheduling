@@ -214,7 +214,7 @@ class MultiPeriodOpt(SinglePeriodOpt):
         if z.value is None:
             logging.error("Solver failed, with only high precision but 30M iterations, returning previous value")
             logging.info("input to the solver", w.size,t,z.value, t2-t1,self.lookahead_periods)
-            print(self.foo,w.size,t,z.value, t2-t1, self.lookahead_periods)
+            print(w.size,t,z.value, t2-t1, self.lookahead_periods,file=self.foo)
             self.foo.close()
             return pd.Series(index=portfolio.index,data=self.prevz)
         else:
@@ -223,6 +223,6 @@ class MultiPeriodOpt(SinglePeriodOpt):
             #xx=[ll[0] for ll in xx]
             logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
             self.prevz=xx
-            print(self.foo,w.size,t,z.value.tolist(), t2-t1, self.lookahead_periods)
+            print(w.size,t,z.value.tolist(), t2-t1, self.lookahead_periods,file=self.foo)
             self.foo.close()
             return pd.Series(index=portfolio.index,data=xx)
