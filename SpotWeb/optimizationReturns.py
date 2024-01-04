@@ -31,7 +31,7 @@ limitations under the License.
 
 
 import cvxpy as cvx
-from expression import Expression
+#from expression import Expression
 import data_management
 #from pymc3.examples.custom_dists import alpha
 
@@ -40,7 +40,7 @@ __all__ = ['ReturnsForecast', 'MPOReturnsForecast',
 
 dm=data_management.data_management()
 
-class BaseReturnsModel(Expression):
+class BaseReturnsModel(cvx.Expression):
     pass
 
 
@@ -122,7 +122,7 @@ class MPOReturnsForecast(BaseReturnsModel):
 
 
     def weight_expr(self, t, wplus, z=None, v=None):
-            print "WTF, not implemented "
+            print("WTF, not implemented ")
             pass
 
 

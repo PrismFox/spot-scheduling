@@ -21,7 +21,7 @@ import logging
 import time
 import inspect
 
-import multiprocess
+import multiprocessing as multiprocess
 import numpy as np
 import pandas as pd
 import cvxpy as cvx
@@ -47,7 +47,7 @@ class MarketSimulator():
         self.costs = costs
         for cost in self.costs:
             logging.info("cost in sim", type(cost), self.costs)
-            assert (isinstance(cost, BaseCost))
+            assert (isinstance(cost, BaseCost)), f'{type(cost)} is not a BaseCost'
 
 
     def propagate(self, h, u, t):
@@ -66,10 +66,10 @@ class MarketSimulator():
         logging.info("h value:", h)
         logging.info("u value:", u)
         hplus = h + u
-        costs = [cost.value_expr(t, h_plus=hplus, u=u) for cost in self.costs]
+        costs = [cost.value_expr(t, h_plus=hplus, u=u, LA=1) for cost in self.costs]
         for cost in costs:
             assert(not pd.isnull(cost))
-            assert(not np.isinf(cost))
+            assert(not np.isinf(cost.value))
         h_next =  hplus
         assert (not h_next.isnull().values.any())
         assert (not u.isnull().values.any())
@@ -93,15 +93,15 @@ class MarketSimulator():
         for t in simulation_times:
             logging.info('Getting trades at time %s' % t)
             start = time.time()
-        logging.info("simulator t: ",type(t), t)
-        logging.info("simulator policy: ",type(policy))
+            logging.info("simulator t: ",type(t), t)
+            logging.info("simulator policy: ",type(policy))
             try:
                 u = policy.get_trades(h, t)
             except cvx.SolverError as e:
                 logging.warning(
                     'Solver failed on timestamp %s. Default to no trades.' % t)
                 raise e
-        u = pd.Series(index=h.index, data=0.)
+            u = pd.Series(index=h.index, data=0.)
             end = time.time()
             assert (not pd.isnull(u).any())
             results.log_policy(t, end - start)

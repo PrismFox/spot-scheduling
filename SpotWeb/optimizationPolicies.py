@@ -32,13 +32,13 @@ import pandas as pd
 import numpy as np
 import logging
 import cvxpy as cvx
-from cvxpy import *
 from osqp import *
 from optimizationCosts import BaseCost
 from optimizationReturns import BaseReturnsModel
 from optimizationConstraints import BaseConstraint
 import data_management
 import time
+from datetime import datetime
 dm=data_management.data_management()
 
 
@@ -56,7 +56,7 @@ class BasePolicy(object):
         self.constraints = []
         
     @abstractmethod
-    def get_trades(self, portfolio, t=pd.datetime.today()):
+    def get_trades(self, portfolio, t=datetime.utcnow().date()):
         """Trades list given current portfolio and time t.
         """
         return NotImplemented
@@ -82,12 +82,12 @@ class SinglePeriodOpt(BasePolicy):
         super(SinglePeriodOpt, self).__init__()
 
         for cost in costs:
-            print type(cost), type(BaseCost)
+            print(type(cost), type(BaseCost))
             assert isinstance(cost, BaseCost)
             self.costs.append(cost)
 
         for constraint in constraints:
-            logging.log(type(constraint))
+            logging.info(type(constraint))
             assert isinstance(constraint, BaseConstraint)
             self.constraints.append(constraint)
 
@@ -107,7 +107,7 @@ class SinglePeriodOpt(BasePolicy):
         """
 
         if t is None:
-            t = pd.datetime.today()
+            t = datetime.utcnow().date()
 
         value = sum(portfolio)
         w = portfolio / value
@@ -174,10 +174,10 @@ class MultiPeriodOpt(SinglePeriodOpt):
         self.prevz=[]
         super(MultiPeriodOpt, self).__init__(*args, **kwargs)
 
-    def get_trades(self, portfolio, t=pd.datetime.today()):
+    def get_trades(self, portfolio, t=datetime.utcnow().date()):
 
         value = sum(portfolio)
-        assert (value > 0.)
+        assert (value > 0)
         w = cvx.Constant(portfolio.values / value)
 
         prob_arr = []
@@ -187,8 +187,9 @@ class MultiPeriodOpt(SinglePeriodOpt):
                 self.trading_times[self.trading_times.index(t):
                                    self.trading_times.index(t) +
                                    self.lookahead_periods]:
-            z = cvx.Variable(*w.size)
+            z = cvx.Variable(w.shape)
             wplus = z
+            #r_adj = cvx.Variable(w.shape)
             self.prevz=wplus
 
             costs, constr = [], []
@@ -197,8 +198,8 @@ class MultiPeriodOpt(SinglePeriodOpt):
                 costs.append(cost_expr)
                 constr += const_expr
 
-            obj = sum(costs)
-            constr += [sum(z) >= 0]
+            obj = cvx.sum(costs)
+            constr += [cvx.sum(z) >= 0]
             constr += [con.weight_expr(t, wplus, z, value)
                        for con in self.constraints]
             prob = cvx.Problem(cvx.Minimize(obj), constr)
@@ -206,22 +207,22 @@ class MultiPeriodOpt(SinglePeriodOpt):
             z_vars.append(z)
             w = wplus
 
-        sumprob=sum(prob_arr)
-        solution=sumprob.solve(solver=SCS, max_iters=40000000)
+        sumprob=cvx.sum(prob_arr)
+        solution=sumprob.solve(solver=cvx.SCS, max_iters=40000000)
         t2=time.time()
         self.foo=open("SimO.out","w")
         if z.value is None:
-            log.error("Solver failed, with only high precision but 30M iterations, returning previous value")
-            log.info("input to the solver", w.size,t,z.value, t2-t1,self.lookahead_periods)
-            print>>self.foo,w.size,t,z.value, t2-t1, self.lookahead_periods
+            logging.error("Solver failed, with only high precision but 30M iterations, returning previous value")
+            logging.info("input to the solver", w.size,t,z.value, t2-t1,self.lookahead_periods)
+            print(self.foo,w.size,t,z.value, t2-t1, self.lookahead_periods)
             self.foo.close()
             return pd.Series(index=portfolio.index,data=self.prevz)
         else:
             xx=z_vars[0].value # * value
             xx=xx.tolist()
-            xx=[ll[0] for ll in xx]
-            log.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
+            #xx=[ll[0] for ll in xx]
+            logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
             self.prevz=xx
-            print>>self.foo,w.size,t,z.value.tolist(), t2-t1, self.lookahead_periods
+            print(self.foo,w.size,t,z.value.tolist(), t2-t1, self.lookahead_periods)
             self.foo.close()
             return pd.Series(index=portfolio.index,data=xx)

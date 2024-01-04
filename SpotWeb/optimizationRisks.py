@@ -54,9 +54,9 @@ def locator(obj, t):
 
 class BaseRiskModel(BaseCost):
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.w_bench = kwargs.pop('w_bench', 0.)
-        super(BaseRiskModel, self).__init__()
+        super().__init__(*args, **kwargs)
         self.gamma_half_life = kwargs.pop('gamma_half_life', np.inf)
 
     def weight_expr(self, t, w_plus, z, value):
@@ -67,17 +67,17 @@ class BaseRiskModel(BaseCost):
     def _estimate(self, t, w_plus, z, value):
         return NotImplemented
 
-    def weight_expr_ahead(self, t, tau, w_plus, z, value):
+    def weight_expr_ahead(self, tau, w_plus, z, value, lookaheads):
         """Estimate risk model at time tau in the future."""
         if self.gamma_half_life == np.inf:
             gamma_multiplier = 1.
         else:
             decay_factor = 2 ** (-1 / self.gamma_half_life)
             # TODO not dependent on days
-            gamma_init = decay_factor ** ((tau - t).days)
+            gamma_init = decay_factor ** lookaheads
             gamma_multiplier = gamma_init * \
                 (1 - decay_factor) / (1 - decay_factor)
-        return gamma_multiplier * self.weight_expr(t, w_plus, z, value)[0], []
+        return gamma_multiplier * self.weight_expr(tau, w_plus, z, value)[0], []
 
     def optimization_log(self, t):
         if self.expression.value:
@@ -101,10 +101,12 @@ class FullSigma(BaseRiskModel):
             assert(not pd.isnull(Sigma).values.any())
         except AttributeError:
             assert (not pd.isnull(Sigma).any())
-        super(FullSigma, self).__init__(**kwargs)
+        super().__init__(Sigma, **kwargs)
 
     def _estimate(self, t, wplus, z, value):
-        self.expression = cvx.quad_form(z, locator(self.Sigma, t+dt.timedelta(hours=1)).values)        
+        sigmas = locator(self.Sigma, t+dt.timedelta(hours=1)).values
+        sigmas = cvx.atoms.affine.wraps.psd_wrap(sigmas)
+        self.expression = cvx.quad_form(z, sigmas)        
         return self.expression
 
 
@@ -118,7 +120,7 @@ class RobustSigma(BaseRiskModel):
     def __init__(self, Sigma, epsilon, **kwargs):
         self.Sigma = Sigma  # pd.Panel or matrix
         self.epsilon = epsilon  # pd.Series or scalar
-        super(RobustSigma, self).__init__(**kwargs)
+        super().__init__(Sigma, epsilon, **kwargs)
 
     def _estimate(self, t, wplus, z, value):
         testing=locator(self.Sigma, t)

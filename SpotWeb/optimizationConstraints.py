@@ -35,7 +35,7 @@ import cvxpy as cvx
 import numpy as np
 import pandas as pd
 
-from .risks import locator
+from optimizationRisks import locator
 
 __all__ = ['LongOnly','MaxOP','MinZ']
 
@@ -61,7 +61,7 @@ class BaseConstraint(object):
 
     @abstractmethod
     def _weight_expr(self, t, w_plus, z, v):
-	return NotImplemented
+	    return NotImplemented
 
 
 
@@ -79,7 +79,7 @@ class LongOnly(BaseConstraint):
           t: time
           w_plus: Server Allocations
         """
-        return sum(w_plus) > 1
+        return sum(w_plus) >= 1
 
 
 

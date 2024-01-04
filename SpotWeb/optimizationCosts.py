@@ -30,7 +30,7 @@ import cvxpy as cvx
 from cvxpy import *
 import numpy as np
 import copy
-from expression import Expression
+#from expression import Expression
 import data_management 
 import datetime as dt
 import logging
@@ -39,10 +39,12 @@ __all__ = ['HcostModelServers','TcostModelServers']
 
 dm=data_management.data_management()
 
-class BaseCost(Expression):
+class BaseCost(cvx.Expression):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self.gamma = 1.  # it is changed by gamma * BaseCost()
+        print('init', type(self))
+        self.args = args
         
 
     def weight_expr(self, t, w_plus, z, value):
@@ -77,7 +79,7 @@ class HcostModelServers(BaseCost):
         self.L=L
         self.oracle=oracle
         self.pricePerReq = pricePerReq
-        super(HcostModelServers, self).__init__()
+        super().__init__(penalty, L, pricePerReq,probFail,arrivalRate,oracle)
         
             
 
@@ -103,10 +105,10 @@ class HcostModelServers(BaseCost):
             third_term*=self.penalty
             third_term+=second_term
             third_term*=1
-            logging.log("Total", third_term.tolist())
+            logging.info(("Total", third_term.tolist()))
             xyz+=1
         except Exception as e:
-                logging.error("Exception in estimate", t, xyz)
+                logging.error(("Exception in estimate", t, xyz))
                 logging.error(str(e))
         if np.isscalar(third_term):
             if np.isnan(third_term):
@@ -115,17 +117,17 @@ class HcostModelServers(BaseCost):
                 logging.error("SLA violation Costs converged to zero due to NANs")
         else:  # it is a pd series
             no_trade = third_term.index[third_term.isnull()]
-            logging.log("no_trade", no_trade)
+            logging.info(("no_trade", no_trade))
             third_term[no_trade] = 0
-            logging.log("Third Term is not a scalar")
+            logging.info("Third Term is not a scalar")
     
         third_term[third_term<0]=0
         try:
             self.expression = third_term.multiply(cvx.abs(z))
         except TypeError:
-            self.expression = third_term.values.multiply(cvx.abs(w_plus))
+            self.expression = third_term.multiply(cvx.abs(w_plus))
             logging.error("Error when Multiplying Third Term with allocation")
-        return sum(self.expression), []
+        return sum(self.expression.tolist()), []
 
 
     def _estimate_ahead(self, tau, w_plus, z, value,LA):
@@ -139,18 +141,18 @@ class HcostModelServers(BaseCost):
                 third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])\
                 +dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0]    #Late requests and failure cost
                 second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
-                logging.debug("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u))
-                logging.log("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L)
+                logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u)))
+                logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L))
             else:
                 third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
                 second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
-                logging.debug("Debugging", LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u),"LLLLL",self.L)
+                logging.debug(("Debugging", LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u),"LLLLL",self.L))
 
 
         else:
             third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
             second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
-            logging.debug("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u), "LLLLL",self.L)
+            logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u), "LLLLL",self.L))
         third_term*=self.penalty
         third_term+=second_term
 
@@ -175,6 +177,7 @@ class TcostModelServers(BaseCost):
         dm.null_checker(pricePerReq)
         self.pricePerReq = pricePerReq
         self.oracle=oracle
+        super().__init__(arrival, pricePerReq,oracle)
         
 
     def _estimate(self, t, w_plus, z, value):
