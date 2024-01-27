@@ -77,8 +77,8 @@ class SimulationResult():
                 self.sharpe_ratio,
             'Max. drawdown':
                 self.max_drawdown,
-            'Turnover (%)':
-                self.turnover.mean() * 100 * self.PPY,
+            #'Turnover (%)':
+            #    self.turnover.mean() * 100 * self.PPY,
             'Average policy time (sec)':
                 self.policy_time.mean(),
             'Average simulator time (sec)':

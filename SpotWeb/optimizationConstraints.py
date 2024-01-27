@@ -79,7 +79,8 @@ class LongOnly(BaseConstraint):
           t: time
           w_plus: Server Allocations
         """
-        return sum(w_plus) >= 1
+        #return cvx.sum(z) >= 1
+        return cvx.sum(w_plus) >= 1
 
 
 
@@ -98,7 +99,8 @@ class MaxOP(BaseConstraint):
           w_plus: holdings
         """
 
-        return sum(w_plus) <= 2
+        #return cvx.sum(z) <= 2
+        return cvx.sum(w_plus) <= 2
 
 
 class MinZ(BaseConstraint):

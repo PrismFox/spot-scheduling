@@ -65,7 +65,8 @@ class MarketSimulator():
         assert (u.index.equals(h.index))
         logging.info("h value:", h)
         logging.info("u value:", u)
-        hplus = h + u
+        #hplus = h + u
+        hplus = u
         costs = [cost.value_expr(t, h_plus=hplus, u=u, LA=1) for cost in self.costs]
         for cost in costs:
             assert(not pd.isnull(cost))
@@ -83,6 +84,9 @@ class MarketSimulator():
         logging.basicConfig(level=loglevel)
         results = SimulationResult(initial_portfolio=copy.copy(initial_portfolio), policy=policy, simulator=self)
         h = initial_portfolio
+
+        u = h
+
         logging.info("simulator run+backtest")
         simulation_times = self.failures.index[
             (self.failures.index >= start_time) &
@@ -100,8 +104,8 @@ class MarketSimulator():
             except cvx.SolverError as e:
                 logging.warning(
                     'Solver failed on timestamp %s. Default to no trades.' % t)
-                raise e
-            u = pd.Series(index=h.index, data=0.)
+                #raise e
+                #u = pd.Series(index=h.index, data=0.)
             end = time.time()
             assert (not pd.isnull(u).any())
             results.log_policy(t, end - start)

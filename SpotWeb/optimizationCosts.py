@@ -38,6 +38,7 @@ import logging
 __all__ = ['HcostModelServers','TcostModelServers']
 
 dm=data_management.data_management()
+#logging.basicConfig(level=logging.DEBUG, filename='simulation.log', filemode='w')
 
 class BaseCost(cvx.Expression):
 
@@ -63,8 +64,120 @@ class BaseCost(cvx.Expression):
 
     def __rmul__(self, other):
         """Read the gamma parameter as a multiplication."""
-        return self.__mul__(other)
+        return self.__mul__(other)    
 
+class RegionBasedModelServers(BaseCost):
+    """A model for SLA violation costs.
+    """
+
+    def __init__(self, penalty,L, pricePerReq,probFail,arrivalRate,oracle=True):
+        dm.null_checker(probFail)
+        self.failure = probFail
+        dm.null_checker(arrivalRate)
+        self.Lambda = arrivalRate
+        self.penalty=penalty
+        self.L=L
+        self.oracle=oracle
+        self.pricePerReq = pricePerReq
+        super().__init__(penalty, L, pricePerReq,probFail,arrivalRate,oracle)
+        
+            
+
+    def _estimate(self, t, w_plus, z, value,LA):
+        """Estimate SLA violation costs.
+
+        Args:
+          t: time of estimate
+          wplus: holdings
+          tau: time to estimate (default=t)
+        """
+        constr = []
+        xyz=0
+
+        try:
+            if LA==1: 
+                # failure=matrix, lambda=scalar, L=scalar
+                third_term = dm.time_locator(self.failure, t).multiply(dm.time_locator(self.Lambda, t).multiply(self.L).tolist()[0])
+                # pricePerReq=matrix, lambda=scalar
+                second_term = dm.time_locator(self.pricePerReq,t).multiply(dm.time_locator(self.Lambda, t).tolist()[0])    #Provisioning cost
+
+            else:
+                third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
+                second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
+            # penalty=scalar
+            third_term*=self.penalty
+            # third_term=matrix, second_term=matrix
+            third_term+=second_term
+            third_term*=1
+            logging.info(("Total", third_term.tolist()))
+            xyz+=1
+        except Exception as e:
+                logging.error(("Exception in estimate", t, xyz))
+                logging.error(str(e))
+        if np.isscalar(third_term):
+            if np.isnan(third_term):
+                constr += [z == 0]
+                third_term = 0
+                logging.error("SLA violation Costs converged to zero due to NANs")
+        else:  # it is a pd series
+            no_trade = third_term.index[third_term.isnull()]
+            logging.info(("no_trade", no_trade))
+            third_term[no_trade] = 0
+            logging.info("Third Term is not a scalar")
+    
+        #constr += [z[i] == 0 for i in second_term.index.get_indexer(second_term[second_term == 0].index)]
+        b = cvx.minimum(z + 1 - 2*cvx.ceil(z), 0)
+        constr += [cvx.sum(cvx.multiply(b, second_term)) == 0]
+
+        third_term[third_term<0]=0
+        try:
+            # third_term=matrix, z=matrix
+            self.expression = third_term.multiply(cvx.abs(z))
+        except TypeError:
+            # third_term=matrix, w_plus=matrix
+            self.expression = third_term.multiply(cvx.abs(w_plus))
+            logging.error("Error when Multiplying Third Term with allocation")
+        return sum(self.expression.tolist()), []
+
+
+    def _estimate_ahead(self, tau, w_plus, z, value,LA):
+        return self._estimate(tau, w_plus, z, value,LA)
+
+    def value_expr(self, t, h_plus, u,LA):
+        u[u<=0]=0
+        u_nc = u
+
+        if LA==1: 
+            if dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0]>0:
+                third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])\
+                +dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0]    #Late requests and failure cost
+                second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
+                logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u)))
+                logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L,'PPR',dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)),'FR',dm.time_locator(self.failure, t+dt.timedelta(hours=1))))
+            else:
+                third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
+                second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
+                logging.debug(("Debugging", LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u),"LLLLL",self.L))
+
+
+        else:
+            third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
+            second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
+            logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u), "LLLLL",self.L))
+            logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L,'PPR',dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)),'FR',dm.time_locator(self.failure, t+dt.timedelta(hours=1))))
+
+        third_term*=self.penalty
+        third_term+=second_term
+
+        self.last_cost = third_term*u_nc  #np.abs(u_nc) * self.penalty *(self.L*dm.time_locator(self.failure, t).multiply(
+
+        return  sum(self.last_cost)
+
+    def optimization_log(self, t):
+        return self.expression.values
+
+    def simulation_log(self, t):
+        return self.last_cost
 
 class HcostModelServers(BaseCost):
     """A model for SLA violation costs.
@@ -93,6 +206,7 @@ class HcostModelServers(BaseCost):
         """
         constr = []
         xyz=0
+
         try:
             if LA==1: 
                 third_term = dm.time_locator(self.failure, t).multiply(dm.time_locator(self.Lambda, t).multiply(self.L).tolist()[0])
@@ -101,7 +215,6 @@ class HcostModelServers(BaseCost):
             else:
                 third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
                 second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
-
             third_term*=self.penalty
             third_term+=second_term
             third_term*=1
@@ -121,6 +234,10 @@ class HcostModelServers(BaseCost):
             third_term[no_trade] = 0
             logging.info("Third Term is not a scalar")
     
+        #constr += [z[i] == 0 for i in second_term.index.get_indexer(second_term[second_term == 0].index)]
+        b = cvx.minimum(z + 1 - 2*cvx.ceil(z), 0)
+        constr += [cvx.sum(cvx.multiply(b, second_term)) == 0]
+
         third_term[third_term<0]=0
         try:
             self.expression = third_term.multiply(cvx.abs(z))
@@ -134,15 +251,16 @@ class HcostModelServers(BaseCost):
         return self._estimate(tau, w_plus, z, value,LA)
 
     def value_expr(self, t, h_plus, u,LA):
-        u[u<0]=0
+        u[u<=0]=0
         u_nc = u
+
         if LA==1: 
             if dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0]>0:
                 third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])\
                 +dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0]    #Late requests and failure cost
                 second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
                 logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u)))
-                logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L))
+                logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L,'PPR',dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)),'FR',dm.time_locator(self.failure, t+dt.timedelta(hours=1))))
             else:
                 third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
                 second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
@@ -153,6 +271,8 @@ class HcostModelServers(BaseCost):
             third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
             second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
             logging.debug(("Debugging",LA,t, third_term*u, second_term*u, sum(third_term*u),sum(second_term*u), "LLLLL",self.L))
+            logging.info(("error in prediction",dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0]- dm.time_locator(self.Lambda, t).tolist()[0],"LLLL", self.L,'PPR',dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)),'FR',dm.time_locator(self.failure, t+dt.timedelta(hours=1))))
+
         third_term*=self.penalty
         third_term+=second_term
 

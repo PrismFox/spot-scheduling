@@ -172,6 +172,8 @@ class MultiPeriodOpt(SinglePeriodOpt):
         self.lookahead_periods = lookahead_periods
         self.trading_times = trading_times
         self.prevz=[]
+        with open("SimO.out","w") as foo:
+            pass
         super(MultiPeriodOpt, self).__init__(*args, **kwargs)
 
     def get_trades(self, portfolio, t=datetime.utcnow().date()):
@@ -188,9 +190,11 @@ class MultiPeriodOpt(SinglePeriodOpt):
                                    self.trading_times.index(t) +
                                    self.lookahead_periods]:
             z = cvx.Variable(w.shape)
+            #wplus = z - w
             wplus = z
             #r_adj = cvx.Variable(w.shape)
             self.prevz=wplus
+            #self.prevz=w
 
             costs, constr = [], []
             for cost in self.costs:
@@ -205,24 +209,24 @@ class MultiPeriodOpt(SinglePeriodOpt):
             prob = cvx.Problem(cvx.Minimize(obj), constr)
             prob_arr.append(prob)
             z_vars.append(z)
-            w = wplus
+            #w += wplus
+            w=wplus
 
         sumprob=cvx.sum(prob_arr)
-        solution=sumprob.solve(solver=cvx.SCS, max_iters=40000000)
+        maxiters=800000000
+        solution=sumprob.solve()#solver=cvx.SCS, max_iters=maxiters, verbose=True)
         t2=time.time()
-        self.foo=open("SimO.out","w")
-        if z.value is None:
-            logging.error("Solver failed, with only high precision but 30M iterations, returning previous value")
-            logging.info("input to the solver", w.size,t,z.value, t2-t1,self.lookahead_periods)
-            print(w.size,t,z.value, t2-t1, self.lookahead_periods,file=self.foo)
-            self.foo.close()
-            return pd.Series(index=portfolio.index,data=self.prevz)
-        else:
-            xx=z_vars[0].value # * value
-            xx=xx.tolist()
-            #xx=[ll[0] for ll in xx]
-            logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
-            self.prevz=xx
-            print(w.size,t,z.value.tolist(), t2-t1, self.lookahead_periods,file=self.foo)
-            self.foo.close()
-            return pd.Series(index=portfolio.index,data=xx)
+        with open("SimO.out","a") as foo:
+            if z.value is None:
+                logging.error(f"Solver failed, with only high precision but {maxiters} iterations, returning previous value")
+                logging.info("input to the solver", w.shape,t,z.value, t2-t1,self.lookahead_periods)
+                print(w.size,t, None, z.value, t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
+                return pd.Series(index=portfolio.index,data=self.prevz)
+            else:
+                xx=z_vars[0].value # * value
+                xx=xx.tolist()
+                #xx=[ll[0] for ll in xx]
+                logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
+                self.prevz=xx
+                print(w.size,t, sum(z.value),z.value.tolist(), t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
+                return pd.Series(index=portfolio.index,data=xx)
