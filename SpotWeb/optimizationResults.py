@@ -50,7 +50,7 @@ class SimulationResult():
         """
         self.PPY = PPY
         self.timedelta = timedelta
-        self.initial_val = sum(initial_portfolio)
+        self.initial_val = initial_portfolio.sum()
         self.initial_portfolio = copy.copy(initial_portfolio)
         #self.cash_key = cash_key
         self.simulator = simulator
@@ -89,7 +89,10 @@ class SimulationResult():
                 to_string(float_format='{:,.3f}'.format))
 
     def log_data(self, name, t, entry):
+        if isinstance(entry, pd.DataFrame):
+            entry = [entry.to_numpy()]
         try:
+
             getattr(self, name).loc[t] = entry
         except AttributeError:
             setattr(self, name,

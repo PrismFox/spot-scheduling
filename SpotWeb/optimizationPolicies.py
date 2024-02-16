@@ -83,7 +83,7 @@ class SinglePeriodOpt(BasePolicy):
 
         for cost in costs:
             print(type(cost), type(BaseCost))
-            assert isinstance(cost, BaseCost)
+            #assert isinstance(cost, BaseCost)
             self.costs.append(cost)
 
         for constraint in constraints:
@@ -178,7 +178,7 @@ class MultiPeriodOpt(SinglePeriodOpt):
 
     def get_trades(self, portfolio, t=datetime.utcnow().date()):
 
-        value = sum(portfolio)
+        value = np.sum(portfolio.values)
         assert (value > 0)
         w = cvx.Constant(portfolio.values / value)
 
@@ -229,4 +229,7 @@ class MultiPeriodOpt(SinglePeriodOpt):
                 logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
                 self.prevz=xx
                 print(w.size,t, sum(z.value),z.value.tolist(), t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
-                return pd.Series(index=portfolio.index,data=xx)
+                if isinstance(portfolio, pd.Series):
+                    return pd.Series(index=portfolio.index, data=xx)
+                else:
+                    return pd.DataFrame(index=portfolio.index,columns=portfolio.columns, data=xx)

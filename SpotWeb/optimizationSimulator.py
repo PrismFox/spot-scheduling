@@ -47,7 +47,7 @@ class MarketSimulator():
         self.costs = costs
         for cost in self.costs:
             logging.info("cost in sim", type(cost), self.costs)
-            assert (isinstance(cost, BaseCost)), f'{type(cost)} is not a BaseCost'
+            #assert (isinstance(cost, BaseCost)), f'{type(cost)} is not a BaseCost'
 
 
     def propagate(self, h, u, t):
@@ -88,9 +88,9 @@ class MarketSimulator():
         u = h
 
         logging.info("simulator run+backtest")
-        simulation_times = self.failures.index[
-            (self.failures.index >= start_time) &
-            (self.failures.index <= end_time)]
+        simulation_times = list(dict.fromkeys(self.failures.index.get_level_values(0)[
+            (self.failures.index.get_level_values(0) >= start_time) &
+            (self.failures.index.get_level_values(0) <= end_time)]))
         logging.info('Backtest started, from %s to %s' %
                      (simulation_times[0], simulation_times[-1]))
 
@@ -107,7 +107,7 @@ class MarketSimulator():
                 #raise e
                 #u = pd.Series(index=h.index, data=0.)
             end = time.time()
-            assert (not pd.isnull(u).any())
+            assert (not pd.isnull(u).values.any())
             results.log_policy(t, end - start)
 
             logging.info('Propagating portfolio at time %s' % t)

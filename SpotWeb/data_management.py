@@ -62,10 +62,19 @@ class data_management():
 	def time_locator(self, obj, t, as_numpy=False):
 		"""Retrieve data from a time indexed DF, or a Series or scalar."""
 		if isinstance(obj, pd.DataFrame):
-			res = obj.iloc[obj.axes[0].get_indexer([t], method='pad')[0]]
+			index = obj.axes[0]
+			if isinstance(index, pd.MultiIndex):
+				res = obj.loc[t, :]
+			else:
+				res = obj.iloc[obj.axes[0].get_indexer([t], method='pad')[0]]
 			return res.values if as_numpy else res
 		elif isinstance(obj, pd.Series):
-			return obj.values if as_numpy else obj
+			index = obj.index
+			if isinstance(index, pd.MultiIndex):
+				res = obj.loc[t]
+			else:
+				res = obj
+			return res.values if as_numpy else res
 		elif np.isscalar(obj):
 			return obj
 		else:

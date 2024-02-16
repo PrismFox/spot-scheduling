@@ -114,16 +114,16 @@ class RegionBasedModelServers(BaseCost):
         except Exception as e:
                 logging.error(("Exception in estimate", t, xyz))
                 logging.error(str(e))
-        if np.isscalar(third_term):
-            if np.isnan(third_term):
-                constr += [z == 0]
-                third_term = 0
-                logging.error("SLA violation Costs converged to zero due to NANs")
-        else:  # it is a pd series
-            no_trade = third_term.index[third_term.isnull()]
-            logging.info(("no_trade", no_trade))
-            third_term[no_trade] = 0
-            logging.info("Third Term is not a scalar")
+        #if np.isscalar(third_term):
+        if np.isnan(third_term).any():
+            constr += [z == 0]
+            third_term = 0
+            logging.error("SLA violation Costs converged to zero due to NANs")
+        #else:  # it is a pd series
+        #    no_trade = third_term.index[third_term.isnull()]
+        #    logging.info(("no_trade", no_trade))
+        #    third_term[no_trade] = 0
+        #    logging.info("Third Term is not a scalar")
     
         #constr += [z[i] == 0 for i in second_term.index.get_indexer(second_term[second_term == 0].index)]
         b = cvx.minimum(z + 1 - 2*cvx.ceil(z), 0)
@@ -209,30 +209,31 @@ class HcostModelServers(BaseCost):
 
         try:
             if LA==1: 
-                third_term = dm.time_locator(self.failure, t).multiply(dm.time_locator(self.Lambda, t).multiply(self.L).tolist()[0])
-                second_term = dm.time_locator(self.pricePerReq,t).multiply(dm.time_locator(self.Lambda, t).tolist()[0])    #Provisioning cost
+                third_term = dm.time_locator(self.failure, t).T.multiply(dm.time_locator(self.Lambda, t).multiply(self.L)).T#.tolist()[0])
+                second_term = dm.time_locator(self.pricePerReq,t).T.multiply(dm.time_locator(self.Lambda, t)).T#.tolist()[0])    #Provisioning cost
 
             else:
-                third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L).tolist()[0])
-                second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).tolist()[0])    #Provisioning cost
+                third_term = dm.time_locator(self.failure, t+dt.timedelta(hours=1)).T.multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1)).multiply(self.L)).T#.tolist()[0])
+                second_term = dm.time_locator(self.pricePerReq,t+dt.timedelta(hours=1)).T.multiply(dm.time_locator(self.Lambda, t+dt.timedelta(hours=1))).T#.tolist()[0])    #Provisioning cost
             third_term*=self.penalty
             third_term+=second_term
             third_term*=1
-            logging.info(("Total", third_term.tolist()))
+            logging.info(("Total", third_term.to_numpy()))
             xyz+=1
         except Exception as e:
                 logging.error(("Exception in estimate", t, xyz))
                 logging.error(str(e))
-        if np.isscalar(third_term):
-            if np.isnan(third_term):
-                constr += [z == 0]
-                third_term = 0
-                logging.error("SLA violation Costs converged to zero due to NANs")
-        else:  # it is a pd series
-            no_trade = third_term.index[third_term.isnull()]
-            logging.info(("no_trade", no_trade))
-            third_term[no_trade] = 0
-            logging.info("Third Term is not a scalar")
+                raise e
+        #if np.isscalar(third_term):
+        if third_term.isna().values.any():
+            constr += [z == 0]
+            third_term = 0
+            logging.error("SLA violation Costs converged to zero due to NANs")
+        #else:  # it is a pd series
+        #    no_trade = third_term.index[third_term.isnull()]
+        #    logging.info(("no_trade", no_trade))
+        #    third_term[no_trade] = 0
+        #    logging.info("Third Term is not a scalar")
     
         #constr += [z[i] == 0 for i in second_term.index.get_indexer(second_term[second_term == 0].index)]
         b = cvx.minimum(z + 1 - 2*cvx.ceil(z), 0)
@@ -240,11 +241,11 @@ class HcostModelServers(BaseCost):
 
         third_term[third_term<0]=0
         try:
-            self.expression = third_term.multiply(cvx.abs(z))
+            self.expression = cvxpy.multiply(third_term, cvx.abs(z))
         except TypeError:
             self.expression = third_term.multiply(cvx.abs(w_plus))
             logging.error("Error when Multiplying Third Term with allocation")
-        return sum(self.expression.tolist()), []
+        return cvxpy.sum(self.expression), []
 
 
     def _estimate_ahead(self, tau, w_plus, z, value,LA):
@@ -281,7 +282,7 @@ class HcostModelServers(BaseCost):
         return  sum(self.last_cost)
 
     def optimization_log(self, t):
-        return self.expression.values
+        return self.expression
 
     def simulation_log(self, t):
         return self.last_cost

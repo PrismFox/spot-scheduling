@@ -106,7 +106,8 @@ class FullSigma(BaseRiskModel):
     def _estimate(self, t, wplus, z, value):
         sigmas = locator(self.Sigma, t+dt.timedelta(hours=1)).values
         sigmas = cvx.atoms.affine.wraps.psd_wrap(sigmas)
-        self.expression = cvx.quad_form(z, sigmas)        
+        print(z.shape, sigmas.shape)
+        self.expression = cvx.quad_form(cvx.reshape(z, (sigmas.shape[1])), sigmas)
         return self.expression
 
 
