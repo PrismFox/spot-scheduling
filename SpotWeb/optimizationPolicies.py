@@ -88,7 +88,7 @@ class SinglePeriodOpt(BasePolicy):
 
         for constraint in constraints:
             logging.info(type(constraint))
-            assert isinstance(constraint, BaseConstraint)
+            #assert isinstance(constraint, BaseConstraint)
             self.constraints.append(constraint)
 
         self.solver = solver
@@ -183,52 +183,52 @@ class MultiPeriodOpt(SinglePeriodOpt):
         w = cvx.Constant(portfolio.values / value)
 
         prob_arr = []
-        z_vars = []
+        n_vars = []
         t1=time.time()
         for tau in \
                 self.trading_times[self.trading_times.index(t):
                                    self.trading_times.index(t) +
                                    self.lookahead_periods]:
-            z = cvx.Variable(w.shape)
+            n = cvx.Variable(w.shape, integer=True)
             #wplus = z - w
-            wplus = z
+            wplus = n
             #r_adj = cvx.Variable(w.shape)
             self.prevz=wplus
             #self.prevz=w
 
             costs, constr = [], []
             for cost in self.costs:
-                cost_expr, const_expr = cost.weight_expr_ahead(tau, wplus, z, value,self.lookahead_periods)
+                cost_expr, const_expr = cost.weight_expr_ahead(tau, wplus, n, value,self.lookahead_periods)
                 costs.append(cost_expr)
                 constr += const_expr
 
             obj = cvx.sum(costs)
-            constr += [cvx.sum(z) >= 0]
-            constr += [con.weight_expr(t, wplus, z, value)
+            #constr += [cvx.sum(z) >= 0]
+            constr += [con.weight_expr(t, wplus, n, value)
                        for con in self.constraints]
             prob = cvx.Problem(cvx.Minimize(obj), constr)
             prob_arr.append(prob)
-            z_vars.append(z)
+            n_vars.append(n)
             #w += wplus
             w=wplus
 
         sumprob=cvx.sum(prob_arr)
         maxiters=800000000
-        solution=sumprob.solve()#solver=cvx.SCS, max_iters=maxiters, verbose=True)
+        solution=sumprob.solve(solver=cvx.SCIP, scip_params={'parallel/minnthreads': 6, 'parallel/maxnthreads': 6})#solver=cvx.SCS, max_iters=maxiters, verbose=True)
         t2=time.time()
         with open("SimO.out","a") as foo:
-            if z.value is None:
+            if n.value is None:
                 logging.error(f"Solver failed, with only high precision but {maxiters} iterations, returning previous value")
-                logging.info("input to the solver", w.shape,t,z.value, t2-t1,self.lookahead_periods)
-                print(w.size,t, None, z.value, t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
+                logging.info("input to the solver", w.shape,t,n.value, t2-t1,self.lookahead_periods)
+                print(w.size,t, None, n.value, t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
                 return pd.Series(index=portfolio.index,data=self.prevz)
             else:
-                xx=z_vars[0].value # * value
+                xx=n_vars[0].value # * value
                 xx=xx.tolist()
                 #xx=[ll[0] for ll in xx]
                 logging.info("input to the solver", w.size,t,xx, t2-t1,self.lookahead_periods)
                 self.prevz=xx
-                print(w.size,t, sum(z.value),z.value.tolist(), t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
+                print(w.size,t, sum(n.value),n.value.tolist(), t2-t1, self.lookahead_periods,sumprob.status,sumprob.value,file=foo)
                 if isinstance(portfolio, pd.Series):
                     return pd.Series(index=portfolio.index, data=xx)
                 else:

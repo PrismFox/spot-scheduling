@@ -104,7 +104,7 @@ class MarketSimulator():
             except cvx.SolverError as e:
                 logging.warning(
                     'Solver failed on timestamp %s. Default to no trades.' % t)
-                #raise e
+                raise e
                 #u = pd.Series(index=h.index, data=0.)
             end = time.time()
             assert (not pd.isnull(u).values.any())

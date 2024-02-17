@@ -33,10 +33,11 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 from optimizationCosts import BaseCost
+import data_management
 
 __all__ = ['FullSigma', 'RobustSigma']
 
-
+dm = data_management.data_management()
 def locator(obj, t):
     """Picks last element before t."""
     try:
@@ -95,19 +96,23 @@ class FullSigma(BaseRiskModel):
 
     """
 
-    def __init__(self, Sigma, **kwargs):
+    def __init__(self, Sigma, arrival_rate, instance_capacity, **kwargs):
         self.Sigma = Sigma  # Sigma is either a matrix or a pd.Panel
         try:
             assert(not pd.isnull(Sigma).values.any())
         except AttributeError:
             assert (not pd.isnull(Sigma).any())
-        super().__init__(Sigma, **kwargs)
+        super().__init__(Sigma, arrival_rate, instance_capacity, **kwargs)
+        self.arrival_rate = arrival_rate
+        self.instance_capacity = instance_capacity
 
-    def _estimate(self, t, wplus, z, value):
+    def _estimate(self, t, wplus, n, value):
         sigmas = locator(self.Sigma, t+dt.timedelta(hours=1)).values
         sigmas = cvx.atoms.affine.wraps.psd_wrap(sigmas)
-        print(z.shape, sigmas.shape)
-        self.expression = cvx.quad_form(cvx.reshape(z, (sigmas.shape[1])), sigmas)
+        print(n.shape, sigmas.shape)
+        lambda_ = dm.time_locator(self.arrival_rate, t)
+        share_of_requests = cvx.multiply((self.instance_capacity.T / lambda_.values).T, n)
+        self.expression = cvx.quad_form(cvx.reshape(share_of_requests, (sigmas.shape[1])), sigmas)
         return self.expression
 
 

@@ -36,9 +36,11 @@ import numpy as np
 import pandas as pd
 
 from optimizationRisks import locator
+import data_management
 
 __all__ = ['LongOnly','MaxOP','MinZ']
 
+dm=data_management.data_management()
 
 class BaseConstraint(object):
     __metaclass__ = ABCMeta
@@ -69,8 +71,10 @@ class LongOnly(BaseConstraint):
     """A long only constraint.
     """
 
-    def __init__(self, **kwargs):
-        x=super(LongOnly, self).__init__(**kwargs)
+    def __init__(self, arrival_rate, instance_capacity, **kwargs):
+        x=super().__init__(**kwargs)
+        self.arrival_rate=arrival_rate
+        self.instance_capacity=instance_capacity
 
     def _weight_expr(self, t, w_plus, z, v):
         """returns a constraint where the Sum of the server capacity should be greater than x, where z here is equal 1.
@@ -80,7 +84,8 @@ class LongOnly(BaseConstraint):
           w_plus: Server Allocations
         """
         #return cvx.sum(z) >= 1
-        return cvx.sum(w_plus) >= 1
+        lambda_ = dm.time_locator(self.arrival_rate, t)
+        return cvx.sum(cvx.multiply(w_plus, (self.instance_capacity.T / lambda_.values).T)) >= 1
 
 
 
@@ -88,8 +93,10 @@ class MaxOP(BaseConstraint):
     """Maximum over provisioning allowed in the system.
     """
 
-    def __init__(self, **kwargs):
-        super(MaxOP, self).__init__(**kwargs)
+    def __init__(self, arrival_rate, instance_capacity, **kwargs):
+        super().__init__(**kwargs)
+        self.arrival_rate = arrival_rate
+        self.instance_capacity = instance_capacity
 
     def _weight_expr(self, t, w_plus, z, v):
         """returns a constraint where the Sum of the server capacity should be less than x, where x here is equal 2.
@@ -100,7 +107,8 @@ class MaxOP(BaseConstraint):
         """
 
         #return cvx.sum(z) <= 2
-        return cvx.sum(w_plus) <= 2
+        lambda_ = dm.time_locator(self.arrival_rate, t)
+        return cvx.sum(cvx.multiply(w_plus, (self.instance_capacity.T / lambda_.values).T)) <= 2
 
 
 class MinZ(BaseConstraint):
@@ -108,7 +116,7 @@ class MinZ(BaseConstraint):
     """
 
     def __init__(self, **kwargs):
-        super(MinZ, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def _weight_expr(self, t, w_plus, z, v):
         """Returns a cosntraint on the minimum possible allocation for any market. It can not be less than zero for servers.
@@ -125,8 +133,10 @@ class MaxZ(BaseConstraint):
     value for a given market that can not be violated
     """
 
-    def __init__(self, **kwargs):
-        super(MaxZ, self).__init__(**kwargs)
+    def __init__(self, arrival_rate, instance_capacity, **kwargs):
+        super().__init__(**kwargs)
+        self.arrival_rate = arrival_rate
+        self.instance_capacity = instance_capacity
 
     def _weight_expr(self, t, w_plus, z, v):
         """Maximum allocation for a given market set to 0.5, i.e., no server market should serve more than 50% of all the requests.
@@ -135,4 +145,5 @@ class MaxZ(BaseConstraint):
           t: time
           w_plus: holdings
         """
-        return z <= 0.5
+        lambda_ = dm.time_locator(self.arrival_rate, t)
+        return cvx.multiply(z, (self.instance_capacity.T / lambda_.values).T).T <= 0.5
