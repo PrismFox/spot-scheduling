@@ -189,7 +189,7 @@ class MultiPeriodOpt(SinglePeriodOpt):
                 self.trading_times[self.trading_times.index(t):
                                    self.trading_times.index(t) +
                                    self.lookahead_periods]:
-            n = cvx.Variable(w.shape, integer=True)
+            n = cvx.Variable(w.shape)#, integer=True)
             #wplus = z - w
             wplus = n
             #r_adj = cvx.Variable(w.shape)
@@ -214,7 +214,7 @@ class MultiPeriodOpt(SinglePeriodOpt):
 
         sumprob=cvx.sum(prob_arr)
         maxiters=800000000
-        solution=sumprob.solve(solver=cvx.SCIP, scip_params={'parallel/minnthreads': 6, 'parallel/maxnthreads': 6})#solver=cvx.SCS, max_iters=maxiters, verbose=True)
+        solution=sumprob.solve(cvx.GUROBI)#solver=cvx.SCIP, scip_params={'parallel/minnthreads': 6, 'parallel/maxnthreads': 6})#solver=cvx.SCS, max_iters=maxiters, verbose=True)
         t2=time.time()
         with open("SimO.out","a") as foo:
             if n.value is None:

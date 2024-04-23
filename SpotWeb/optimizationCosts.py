@@ -66,6 +66,42 @@ class BaseCost(cvx.Expression):
         """Read the gamma parameter as a multiplication."""
         return self.__mul__(other)    
 
+class DistanceLatencyModel(BaseCost):
+    """A model for costs caused by distance-based latency.
+    """
+
+    def __init__(self, regional_arrival_rate, instance_capacity, distance, d_weight):
+        dm.null_checker(regional_arrival_rate)
+        self.Lambda_r = regional_arrival_rate
+        dm.null_checker(instance_capacity)
+        self.r = instance_capacity
+        self.distance = distance # [L_s, L_r]
+        self.d_weight = d_weight
+        super().__init__(regional_arrival_rate, instance_capacity)
+
+    def _estimate_ahead(self, tau, w_plus, n, value,LA):
+        return self._estimate(tau, w_plus, n, value,LA)
+
+    def _estimate(self, t, w_plus, n, value,LA):
+        consts = []
+
+        regional_load = cvx.Variable((n.shape[0] * n.shape[1], dm.time_locator(self.Lambda_r, t).shape[0]), integer = True)
+        #share_of_regional_requests = cvx.Variable((n.shape[0] * n.shape[1], dm.time_locator(self.Lambda_r, t).shape[0]), nonneg = True) # [L_s * i, L_r]
+        #regional_load = cvx.multiply(share_of_regional_requests, np.expand_dims(dm.time_locator(self.Lambda_r, t), axis=0))
+        consts.append(cvx.sum(regional_load, axis = 0) == dm.time_locator(self.Lambda_r, t))
+        consts.append(regional_load >= 0)
+        consts.append(regional_load <= np.expand_dims(dm.time_locator(self.Lambda_r, t), axis=0))
+        #consts.append(cvx.sum(share_of_regional_requests, axis=0) >= 1)
+        #consts.append(cvx.sum(share_of_regional_requests, axis=0) <= 1.25)
+        #consts.append(share_of_regional_requests >= 0)
+        #consts.append(share_of_regional_requests <= 1)
+        consts.append(cvx.sum(regional_load, axis=1) <= cvx.reshape(cvx.multiply(self.r, n), n.shape[0] * n.shape[1]))
+        return cvx.sum(cvx.multiply(self.d_weight, cvx.multiply(np.repeat(self.distance, n.shape[1]), cvx.sum(regional_load, axis=1)))), consts
+    
+    def value_expr(self, t, h_plus, u,LA): #TODO
+        return 1
+
+
 class RegionBasedModelServers(BaseCost):
     """A model for SLA violation costs.
     """
@@ -81,8 +117,6 @@ class RegionBasedModelServers(BaseCost):
         self.pricePerReq = pricePerReq
         super().__init__(penalty, L, pricePerReq,probFail,arrivalRate,oracle)
         
-            
-
     def _estimate(self, t, w_plus, n, value,LA):
         """Estimate SLA violation costs.
 
